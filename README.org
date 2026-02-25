@@ -16,5 +16,5 @@ Add to the top of your ~.org~ file:
 * Example
 
 See [[./example.org][example.org]] for a working demo, or view the rendered
-[[https://yuqiuj-mob.github.io/orgmin-theme/example.html][example.html]].
+[[./example.html][example.html]].
 
