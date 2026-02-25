@@ -156,6 +156,24 @@ body {
 }
 
 /* Search dropdown */
+.search-kbd {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: 'Fira Code', monospace;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 1px 5px;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+#org-search:focus ~ .search-kbd { opacity: 0; }
+
 #org-search-results {
   position: absolute;
   top: calc(100% + 6px);

@@ -25,6 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
     <div class="org-search-wrapper">
       <i class="bi bi-search search-icon"></i>
       <input type="search" id="org-search" placeholder="Search…" autocomplete="off" spellcheck="false">
+      <kbd class="search-kbd">Ctrl K</kbd>
       <div id="org-search-results" hidden></div>
     </div>
   `;
@@ -209,7 +210,16 @@ function setupSearch(main) {
     if (e.key === 'ArrowDown')  { e.preventDefault(); moveTo(items, current + 1); }
     if (e.key === 'ArrowUp')    { e.preventDefault(); moveTo(items, current - 1); }
     if (e.key === 'Enter' && current >= 0) { items[current]?.click(); }
-    if (e.key === 'Escape')     { input.value = ''; hide(); }
+    if (e.key === 'Escape')     { input.value = ''; hide(); input.blur(); }
+  });
+
+  // Global Ctrl+K shortcut
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      e.preventDefault();
+      input.focus();
+      input.select();
+    }
   });
 
   function moveTo(items, idx) {
