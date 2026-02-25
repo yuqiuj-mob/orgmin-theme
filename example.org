@@ -1,0 +1,74 @@
+#+TITLE: My Documentation
+#+SETUPFILE: bootstrap-orgdoc.setup
+#+AUTHOR: Your Name
+
+* Introduction
+
+This is a sample documentation file using the Bootstrap Org-HTML theme.
+Supports nested sections, code blocks with copy buttons, tables, and a
+fast in-page search bar.
+
+** Getting Started
+
+Replace this file's ~#+SETUPFILE~ path with the absolute path to
+~bootstrap-orgdoc.setup~, or keep it relative if your org files live in the
+same directory.
+
+#+begin_note
+*Note:* The ~css/~ and ~js/~ folders must be in the same directory as your
+exported ~.html~ file.
+#+end_note
+
+* Code Examples
+
+** Python
+
+#+begin_src python
+def greet(name: str) -> str:
+    """Return a friendly greeting."""
+    return f"Hello, {name}!"
+
+if __name__ == "__main__":
+    print(greet("World"))
+#+end_src
+
+** Shell
+
+#+begin_src sh
+# Export an org file to HTML
+emacs --batch \
+  --load org \
+  --eval '(org-html-export-to-html)' \
+  myfile.org
+#+end_src
+
+* Tables
+
+| Language   | Paradigm     | Year |
+|------------+--------------+------|
+| Python     | Multi        | 1991 |
+| Haskell    | Functional   | 1990 |
+| Rust       | Systems      | 2010 |
+| TypeScript | Multi        | 2012 |
+
+* Special Blocks
+
+#+begin_warning
+*Warning:* Always back up your files before running batch operations.
+#+end_warning
+
+#+begin_tip
+*Tip:* Press ~M-x org-html-export-to-html~ inside Emacs to export.
+#+end_tip
+
+* Subsection Nesting
+
+** Level 2 heading
+*** Level 3 heading
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod
+tempor incididunt ut labore et dolore magna aliqua.
+
+**** Level 4 heading
+
+Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.
