@@ -1,23 +1,12 @@
-#+TITLE: My Documentation
-#+SETUPFILE: bootstrap-orgdoc.setup
+#+TITLE: Example
+#+SETUPFILE: https://cdn.jsdelivr.net/gh/yuqiuj-mob/orgmin-theme@main/bootstrap-orgdoc.setup
 #+AUTHOR: Your Name
 
 * Introduction
 
 This is a sample documentation file using the Bootstrap Org-HTML theme.
 Supports nested sections, code blocks with copy buttons, tables, and a
-fast in-page search bar.
-
-** Getting Started
-
-Replace this file's ~#+SETUPFILE~ path with the absolute path to
-~bootstrap-orgdoc.setup~, or keep it relative if your org files live in the
-same directory.
-
-#+begin_note
-*Note:* The ~css/~ and ~js/~ folders must be in the same directory as your
-exported ~.html~ file.
-#+end_note
+in-page search bar.
 
 * Code Examples
 

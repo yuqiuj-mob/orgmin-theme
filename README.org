@@ -1,66 +1,20 @@
 #+TITLE:     orgmin-theme
-#+AUTHOR:    Rick Jiang
 #+SETUPFILE: https://cdn.jsdelivr.net/gh/yuqiuj-mob/orgmin-theme@main/bootstrap-orgdoc.setup
-#+OPTIONS:   toc:t num:nil
+#+OPTIONS:   toc:t num:nil author:nil
 
-A Bootstrap 5 HTML export theme for Org mode.  Clean sidebar layout, live
-search, and copy buttons for code blocks — served entirely from CDN.
+A Bootstrap HTML export theme for Org mode.
 
 * Usage
 
-Add one line to the top of your ~.org~ file:
+Add to the top of your ~.org~ file:
 
 #+begin_src org
 #+SETUPFILE: https://cdn.jsdelivr.net/gh/yuqiuj-mob/orgmin-theme@main/bootstrap-orgdoc.setup
 #+end_src
 
-Then export with =C-c C-e h h=.  No local files needed.
-
-** First-time setup
-
-Org mode blocks remote setup files by default.  Whitelist the CDN URL once in
-your config:
-
-#+begin_src emacs-lisp
-(setq org-safe-remote-resources
-      '("\\`https://cdn\\.jsdelivr\\.net/gh/yuqiuj-mob/orgmin-theme@main/"))
-#+end_src
-
-Doom Emacs users: run =M-x customize-variable RET org-safe-remote-resources= and
-add the pattern above — it will be saved to ~custom.el~ automatically.
-
-* Features
-
-| Feature          | Detail                                        |
-|------------------+-----------------------------------------------|
-| Layout           | Fixed sidebar TOC + scrollable content area   |
-| Search           | Live search with keyboard nav (=Ctrl+K= to open) |
-| Code blocks      | Language label + one-click copy button        |
-| Mobile           | Collapsible sidebar overlay                   |
-| Fonts            | Inter (body) · Fira Code (code) via Google    |
-| Dependencies     | Bootstrap 5.3 · Bootstrap Icons 1.11          |
-
-* Keyboard shortcuts
-
-| Key       | Action                     |
-|-----------+----------------------------|
-| =Ctrl+K=    | Focus search bar           |
-| =↑= / =↓=    | Navigate search results    |
-| =Enter=     | Jump to result             |
-| =Esc=       | Close search               |
 
 * Example
 
 See [[./example.org][example.org]] for a working demo, or view the rendered
 [[https://yuqiuj-mob.github.io/orgmin-theme/example.html][example.html]].
 
-* Updating the theme
-
-After pushing changes to GitHub, purge the jsDelivr cache so consumers pick up
-the new version immediately:
-
-#+begin_src sh
-curl "https://purge.jsdelivr.net/gh/yuqiuj-mob/orgmin-theme@main/css/orgdoc.css"
-curl "https://purge.jsdelivr.net/gh/yuqiuj-mob/orgmin-theme@main/js/orgdoc.js"
-curl "https://purge.jsdelivr.net/gh/yuqiuj-mob/orgmin-theme@main/bootstrap-orgdoc.setup"
-#+end_src
