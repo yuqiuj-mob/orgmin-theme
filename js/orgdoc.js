@@ -98,6 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupTocHighlight(main, sidebar);
   setupBackToTop(bttBtn);
   setupCodeCopy(main);
+  setupMermaid(main);
   applyBootstrapClasses(main);
 });
 
@@ -452,6 +453,89 @@ function setupCodeCopy(main) {
       });
     });
   });
+}
+
+/* =============================================================================
+   MERMAID DIAGRAMS
+   ============================================================================= */
+function setupMermaid(main) {
+  const blocks = main.querySelectorAll('pre.src-mermaid');
+  if (!blocks.length || typeof mermaid === 'undefined') return;
+
+  const LIGHT_VARS = {
+    primaryColor: '#e8f4fc',
+    primaryBorderColor: '#0a7bc3',
+    primaryTextColor: '#1e293b',
+    lineColor: '#64748b',
+    secondaryColor: '#f0f4f8',
+    tertiaryColor: '#f8fbfe',
+    background: '#ffffff',
+    mainBkg: '#e8f4fc',
+    nodeBorder: '#0a7bc3',
+    clusterBkg: '#f0f8ff',
+    clusterBorder: '#cbd5e1',
+    titleColor: '#1e293b',
+    edgeLabelBackground: '#ffffff',
+    fontFamily: "'DM Sans', system-ui, sans-serif",
+    fontSize: '14px',
+  };
+
+  const DARK_VARS = {
+    primaryColor: '#1a2d3e',
+    primaryBorderColor: '#0a7bc3',
+    primaryTextColor: '#e2e8f0',
+    lineColor: '#94a3b8',
+    secondaryColor: '#1e293b',
+    tertiaryColor: '#2d3748',
+    background: '#1a1d27',
+    mainBkg: '#1a2d3e',
+    nodeBorder: '#0a7bc3',
+    clusterBkg: '#1e2533',
+    clusterBorder: '#2d3748',
+    titleColor: '#e2e8f0',
+    edgeLabelBackground: '#1a1d27',
+    fontFamily: "'DM Sans', system-ui, sans-serif",
+    fontSize: '14px',
+  };
+
+  // Replace pre blocks with wrapper divs, storing original code
+  blocks.forEach(pre => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'mermaid-wrapper';
+    wrapper.dataset.code = pre.innerText.trim();
+    pre.parentNode.replaceChild(wrapper, pre);
+  });
+
+  async function renderAll() {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'base',
+      themeVariables: isDark ? DARK_VARS : LIGHT_VARS,
+      flowchart: { curve: 'basis', padding: 16, useMaxWidth: true },
+      sequence: { useMaxWidth: true, actorMargin: 60 },
+      er: { useMaxWidth: true },
+    });
+
+    const wrappers = main.querySelectorAll('.mermaid-wrapper[data-code]');
+    for (const wrapper of wrappers) {
+      const id = `mermaid-${Math.random().toString(36).slice(2, 9)}`;
+      try {
+        const { svg } = await mermaid.render(id, wrapper.dataset.code);
+        wrapper.innerHTML = svg;
+      } catch (err) {
+        wrapper.outerHTML = `<div class="mermaid-error">Mermaid error: ${escapeHtml(String(err))}</div>`;
+      }
+    }
+  }
+
+  renderAll();
+
+  // Re-render when dark mode toggles
+  const themeToggle = document.getElementById('theme-toggle');
+  if (themeToggle) {
+    themeToggle.addEventListener('click', () => setTimeout(renderAll, 50));
+  }
 }
 
 /* =============================================================================
