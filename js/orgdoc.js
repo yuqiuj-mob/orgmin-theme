@@ -28,6 +28,9 @@ document.addEventListener('DOMContentLoaded', () => {
       <kbd class="search-kbd">Ctrl K</kbd>
       <div id="org-search-results" hidden></div>
     </div>
+    <button id="theme-toggle" class="theme-toggle" aria-label="Toggle dark mode">
+      <i class="bi bi-moon"></i>
+    </button>
   `;
 
   // ── 3. Build Sidebar ──────────────────────────────────────────────────────
@@ -41,7 +44,6 @@ document.addEventListener('DOMContentLoaded', () => {
     label.className = 'toc-label';
     label.textContent = 'Contents';
     tocDiv.appendChild(label);
-    // clone so we don't disturb original
     tocDiv.appendChild(tocInner.cloneNode(true));
     sidebar.appendChild(tocDiv);
   }
@@ -50,11 +52,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const main = document.createElement('main');
   main.id = 'org-main';
 
-  // Inner wrapper for max-width centering
   const inner = document.createElement('div');
   inner.className = 'org-content-inner';
 
-  // Move all content children (except title and toc) into inner
   const kids = Array.from(contentEl.children);
   kids.forEach(child => {
     if (child !== titleEl && child.id !== 'table-of-contents') {
@@ -92,6 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
   tocEl && tocEl.remove();
 
   // ── 9. Wire up all features ───────────────────────────────────────────────
+  setupDarkMode();
   setupSidebarToggle(sidebar, overlay);
   setupSearch(main);
   setupTocHighlight(main, sidebar);
@@ -99,6 +100,31 @@ document.addEventListener('DOMContentLoaded', () => {
   setupCodeCopy(main);
   applyBootstrapClasses(main);
 });
+
+/* =============================================================================
+   DARK MODE
+   ============================================================================= */
+function setupDarkMode() {
+  const toggle = document.getElementById('theme-toggle');
+  if (!toggle) return;
+
+  const stored = localStorage.getItem('orgdoc-theme');
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const isDark = stored ? stored === 'dark' : prefersDark;
+
+  function applyTheme(dark) {
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    const icon = toggle.querySelector('i');
+    icon.className = dark ? 'bi bi-sun' : 'bi bi-moon';
+    localStorage.setItem('orgdoc-theme', dark ? 'dark' : 'light');
+  }
+
+  applyTheme(isDark);
+
+  toggle.addEventListener('click', () => {
+    applyTheme(document.documentElement.getAttribute('data-theme') !== 'dark');
+  });
+}
 
 /* =============================================================================
    SIDEBAR TOGGLE
@@ -126,17 +152,14 @@ function setupSidebarToggle(sidebar, overlay) {
 
   overlay.addEventListener('click', closeSidebar);
 
-  // Close mobile sidebar on nav link click
   sidebar.addEventListener('click', e => {
     if (e.target.closest('a') && isMobile()) closeSidebar();
   });
 
-  // Restore desktop collapsed state
   if (!isMobile() && localStorage.getItem('orgdoc-sidebar') === '0') {
     sidebar.classList.add('collapsed');
   }
 
-  // Handle resize
   window.addEventListener('resize', () => {
     if (!isMobile()) closeSidebar();
   });
@@ -150,9 +173,6 @@ function setupSearch(main) {
   const results = document.getElementById('org-search-results');
   if (!input || !results) return;
 
-  // Build full-text index from all sections.
-  // Prefers org's outline-text div (id="text-{headingId}") for direct section
-  // content; falls back to collecting siblings until the next same-level heading.
   const index = [];
   main.querySelectorAll('h2[id], h3[id], h4[id]').forEach(h => {
     const textEl = document.getElementById('text-' + h.id);
@@ -182,7 +202,6 @@ function setupSearch(main) {
   let current = -1;
   let activeHighlights = [];
 
-  // Remove all in-document highlight marks inserted by a previous search.
   function clearDocHighlights() {
     activeHighlights.forEach(mark => {
       const parent = mark.parentNode;
@@ -194,7 +213,6 @@ function setupSearch(main) {
     activeHighlights = [];
   }
 
-  // Wrap every occurrence of `query` inside `container` with a <mark>.
   function highlightSection(headingId, query) {
     clearDocHighlights();
     const heading = document.getElementById(headingId);
@@ -235,7 +253,6 @@ function setupSearch(main) {
     });
   }
 
-  // Return a short excerpt of `text` centred around the first occurrence of `query`.
   function extractSnippet(text, query, maxLen = 160) {
     const idx = text.toLowerCase().indexOf(query.toLowerCase());
     if (idx === -1) return text.substring(0, maxLen);
@@ -257,18 +274,32 @@ function setupSearch(main) {
     ).slice(0, 10);
 
     if (hits.length === 0) {
-      results.innerHTML = '<div class="search-no-results">No results found</div>';
+      results.innerHTML = `
+        <div class="search-no-results">
+          <i class="bi bi-search"></i>
+          No results for &ldquo;${escapeHtml(q)}&rdquo;
+        </div>
+      `;
     } else {
+      const levelClass = lvl => `level-${lvl.toLowerCase()}`;
       results.innerHTML = hits.map((item, i) => {
         const preview = extractSnippet(item.text, q);
         return `
           <a href="#${item.id}" class="search-result-item" data-idx="${i}">
-            <span class="search-result-level">${item.level}</span>
+            <span class="search-result-level ${levelClass(item.level)}">${item.level}</span>
             <span class="search-result-title">${highlight(escapeHtml(item.title), q)}</span>
             ${preview ? `<span class="search-result-preview">${highlight(escapeHtml(preview), q)}</span>` : ''}
           </a>
         `;
       }).join('');
+
+      results.innerHTML += `
+        <div class="search-hint">
+          <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+          <span><kbd>↵</kbd> open</span>
+          <span><kbd>Esc</kbd> close</span>
+        </div>
+      `;
     }
     results.hidden = false;
     current = -1;
@@ -291,7 +322,6 @@ function setupSearch(main) {
     if (e.key === 'Escape')     { input.value = ''; hide(); input.blur(); }
   });
 
-  // Global Ctrl+K shortcut
   document.addEventListener('keydown', e => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
       e.preventDefault();
@@ -316,7 +346,6 @@ function setupSearch(main) {
       const id = href ? href.slice(1) : null;
       input.value = '';
       hide();
-      // Highlight after the browser has scrolled to the anchor.
       if (id && q) setTimeout(() => highlightSection(id, q), 80);
     }
   });
@@ -345,7 +374,6 @@ function setupTocHighlight(main, sidebar) {
     const link = tocByHref['#' + id];
     if (!link) return;
     link.classList.add('active');
-    // Scroll TOC so active link is visible
     const sTop = sidebar.scrollTop;
     const sH   = sidebar.clientHeight;
     const lTop = link.offsetTop;
@@ -356,7 +384,6 @@ function setupTocHighlight(main, sidebar) {
   }
 
   const io = new IntersectionObserver(entries => {
-    // Find the topmost intersecting heading
     const visible = entries
       .filter(e => e.isIntersecting)
       .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
@@ -385,37 +412,45 @@ function setupBackToTop(btn) {
    ============================================================================= */
 function setupCodeCopy(main) {
   main.querySelectorAll('pre.src, pre.example').forEach(pre => {
-    // Wrap in a container
     const wrapper = document.createElement('div');
     wrapper.className = 'code-block-wrapper';
     pre.parentNode.insertBefore(wrapper, pre);
     wrapper.appendChild(pre);
     pre.classList.add('in-wrapper');
 
-    // Detect language
     const langClass = Array.from(pre.classList).find(c => c.startsWith('src-'));
     const lang = langClass ? langClass.replace('src-', '') : (pre.classList.contains('example') ? 'text' : '');
+    const langNorm = lang.toLowerCase().replace(/\s+/g, '-');
 
-    // Header bar
     const header = document.createElement('div');
     header.className = 'code-block-header';
     header.innerHTML = `
-      <span class="code-lang">${escapeHtml(lang)}</span>
-      <button class="copy-btn" title="Copy to clipboard"><i class="bi bi-clipboard"></i></button>
+      <div class="code-header-left">
+        <div class="code-dots">
+          <span class="dot dot-red"></span>
+          <span class="dot dot-yellow"></span>
+          <span class="dot dot-green"></span>
+        </div>
+        <span class="code-lang lang-${escapeHtml(langNorm)}">${escapeHtml(lang)}</span>
+      </div>
+      <button class="copy-btn" title="Copy to clipboard">
+        <i class="bi bi-clipboard"></i>
+        <span class="copy-label">Copy</span>
+      </button>
     `;
     wrapper.insertBefore(header, pre);
 
     header.querySelector('.copy-btn').addEventListener('click', function () {
       const text = pre.innerText;
+      const btn = this;
       navigator.clipboard.writeText(text).then(() => {
-        this.innerHTML = '<i class="bi bi-clipboard-check"></i>';
-        this.classList.add('copied');
+        btn.innerHTML = '<i class="bi bi-clipboard-check"></i><span class="copy-label">Copied!</span>';
+        btn.classList.add('copied');
         setTimeout(() => {
-          this.innerHTML = '<i class="bi bi-clipboard"></i>';
-          this.classList.remove('copied');
+          btn.innerHTML = '<i class="bi bi-clipboard"></i><span class="copy-label">Copy</span>';
+          btn.classList.remove('copied');
         }, 2000);
       }).catch(() => {
-        // Fallback
         const sel = window.getSelection();
         const range = document.createRange();
         range.selectNodeContents(pre);
@@ -430,7 +465,6 @@ function setupCodeCopy(main) {
    APPLY BOOTSTRAP CLASSES TO ORG ELEMENTS
    ============================================================================= */
 function applyBootstrapClasses(main) {
-  // Responsive tables
   main.querySelectorAll('table').forEach(table => {
     if (table.closest('.table-responsive')) return;
     const wrap = document.createElement('div');
@@ -439,7 +473,6 @@ function applyBootstrapClasses(main) {
     wrap.appendChild(table);
   });
 
-  // Org tags in headings
   main.querySelectorAll('span.tag').forEach(span => {
     span.classList.add('tag');
   });
@@ -457,7 +490,6 @@ function escapeHtml(str) {
 }
 
 function highlight(html, query) {
-  // html is already escaped; highlight the query term
   const safe = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return html.replace(new RegExp(`(${safe})`, 'gi'), '<mark>$1</mark>');
 }
