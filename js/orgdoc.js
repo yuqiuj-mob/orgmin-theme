@@ -425,14 +425,7 @@ function setupCodeCopy(main) {
     const header = document.createElement('div');
     header.className = 'code-block-header';
     header.innerHTML = `
-      <div class="code-header-left">
-        <div class="code-dots">
-          <span class="dot dot-red"></span>
-          <span class="dot dot-yellow"></span>
-          <span class="dot dot-green"></span>
-        </div>
-        <span class="code-lang lang-${escapeHtml(langNorm)}">${escapeHtml(lang)}</span>
-      </div>
+      <span class="code-lang lang-${escapeHtml(langNorm)}">${escapeHtml(lang)}</span>
       <button class="copy-btn" title="Copy to clipboard">
         <i class="bi bi-clipboard"></i>
         <span class="copy-label">Copy</span>
@@ -444,7 +437,7 @@ function setupCodeCopy(main) {
       const text = pre.innerText;
       const btn = this;
       navigator.clipboard.writeText(text).then(() => {
-        btn.innerHTML = '<i class="bi bi-clipboard-check"></i><span class="copy-label">Copied!</span>';
+        btn.innerHTML = '<i class="bi bi-check2"></i><span class="copy-label">Copied!</span>';
         btn.classList.add('copied');
         setTimeout(() => {
           btn.innerHTML = '<i class="bi bi-clipboard"></i><span class="copy-label">Copy</span>';
