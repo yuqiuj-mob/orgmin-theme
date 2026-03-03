@@ -412,7 +412,7 @@ function setupBackToTop(btn) {
    CODE COPY BUTTONS
    ============================================================================= */
 function setupCodeCopy(main) {
-  main.querySelectorAll('pre.src, pre.example').forEach(pre => {
+  main.querySelectorAll('pre.src:not(.src-mermaid), pre.example').forEach(pre => {
     const wrapper = document.createElement('div');
     wrapper.className = 'code-block-wrapper';
     pre.parentNode.insertBefore(wrapper, pre);
