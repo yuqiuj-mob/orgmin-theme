@@ -150,28 +150,102 @@ function setupSearch(main) {
   const results = document.getElementById('org-search-results');
   if (!input || !results) return;
 
-  // Build index from headings
+  // Build full-text index from all sections.
+  // Prefers org's outline-text div (id="text-{headingId}") for direct section
+  // content; falls back to collecting siblings until the next same-level heading.
   const index = [];
-  main.querySelectorAll('h2, h3, h4').forEach(h => {
-    if (!h.id) return;
-    // Collect up to ~200 chars of following text for preview
-    let preview = '';
-    let sibling = h.nextElementSibling;
-    while (sibling && preview.length < 200) {
-      const t = sibling.textContent.trim();
-      if (t) preview += ' ' + t;
-      sibling = sibling.nextElementSibling;
-      if (sibling && /^h[2-4]$/i.test(sibling.tagName)) break;
+  main.querySelectorAll('h2[id], h3[id], h4[id]').forEach(h => {
+    const textEl = document.getElementById('text-' + h.id);
+    let text;
+    if (textEl) {
+      text = textEl.textContent.trim();
+    } else {
+      const level = parseInt(h.tagName[1]);
+      text = '';
+      let sib = h.nextElementSibling;
+      while (sib) {
+        const m = sib.tagName.match(/^H([2-4])$/i);
+        if (m && parseInt(m[1]) <= level) break;
+        text += ' ' + sib.textContent;
+        sib = sib.nextElementSibling;
+      }
+      text = text.trim();
     }
     index.push({
-      id:      h.id,
-      title:   h.textContent.trim(),
-      preview: preview.trim().substring(0, 180),
-      level:   h.tagName.toUpperCase(),
+      id:    h.id,
+      title: h.textContent.trim(),
+      text,
+      level: h.tagName.toUpperCase(),
     });
   });
 
-  let current = -1; // keyboard nav index
+  let current = -1;
+  let activeHighlights = [];
+
+  // Remove all in-document highlight marks inserted by a previous search.
+  function clearDocHighlights() {
+    activeHighlights.forEach(mark => {
+      const parent = mark.parentNode;
+      if (parent) {
+        parent.replaceChild(document.createTextNode(mark.textContent), mark);
+        parent.normalize();
+      }
+    });
+    activeHighlights = [];
+  }
+
+  // Wrap every occurrence of `query` inside `container` with a <mark>.
+  function highlightSection(headingId, query) {
+    clearDocHighlights();
+    const heading = document.getElementById(headingId);
+    if (!heading) return;
+    const container = heading.parentElement;
+    const re = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    const toProcess = [];
+    let node;
+    while ((node = walker.nextNode()) !== null) {
+      const tag = node.parentElement && node.parentElement.tagName;
+      if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'MARK') continue;
+      re.lastIndex = 0;
+      if (re.test(node.nodeValue)) toProcess.push(node);
+    }
+
+    toProcess.forEach(textNode => {
+      re.lastIndex = 0;
+      const parent = textNode.parentNode;
+      const frag = document.createDocumentFragment();
+      let lastIdx = 0, m;
+      while ((m = re.exec(textNode.nodeValue)) !== null) {
+        if (m.index > lastIdx) {
+          frag.appendChild(document.createTextNode(textNode.nodeValue.slice(lastIdx, m.index)));
+        }
+        const mark = document.createElement('mark');
+        mark.className = 'doc-highlight';
+        mark.textContent = m[0];
+        frag.appendChild(mark);
+        activeHighlights.push(mark);
+        lastIdx = m.index + m[0].length;
+      }
+      if (lastIdx < textNode.nodeValue.length) {
+        frag.appendChild(document.createTextNode(textNode.nodeValue.slice(lastIdx)));
+      }
+      parent.replaceChild(frag, textNode);
+    });
+  }
+
+  // Return a short excerpt of `text` centred around the first occurrence of `query`.
+  function extractSnippet(text, query, maxLen = 160) {
+    const idx = text.toLowerCase().indexOf(query.toLowerCase());
+    if (idx === -1) return text.substring(0, maxLen);
+    const start = Math.max(0, idx - 55);
+    const end   = Math.min(text.length, idx + query.length + 100);
+    let snippet = text.substring(start, end).replace(/\s+/g, ' ');
+    if (start > 0) snippet = '\u2026' + snippet;
+    if (end < text.length) snippet += '\u2026';
+    return snippet.substring(0, maxLen + 4);
+  }
 
   function doSearch() {
     const q = input.value.trim().toLowerCase();
@@ -179,19 +253,22 @@ function setupSearch(main) {
 
     const hits = index.filter(item =>
       item.title.toLowerCase().includes(q) ||
-      item.preview.toLowerCase().includes(q)
+      item.text.toLowerCase().includes(q)
     ).slice(0, 10);
 
     if (hits.length === 0) {
       results.innerHTML = '<div class="search-no-results">No results found</div>';
     } else {
-      results.innerHTML = hits.map((item, i) => `
-        <a href="#${item.id}" class="search-result-item" data-idx="${i}">
-          <span class="search-result-level">${item.level}</span>
-          <span class="search-result-title">${highlight(escapeHtml(item.title), q)}</span>
-          ${item.preview ? `<span class="search-result-preview">${highlight(escapeHtml(item.preview), q)}</span>` : ''}
-        </a>
-      `).join('');
+      results.innerHTML = hits.map((item, i) => {
+        const preview = extractSnippet(item.text, q);
+        return `
+          <a href="#${item.id}" class="search-result-item" data-idx="${i}">
+            <span class="search-result-level">${item.level}</span>
+            <span class="search-result-title">${highlight(escapeHtml(item.title), q)}</span>
+            ${preview ? `<span class="search-result-preview">${highlight(escapeHtml(preview), q)}</span>` : ''}
+          </a>
+        `;
+      }).join('');
     }
     results.hidden = false;
     current = -1;
@@ -201,6 +278,7 @@ function setupSearch(main) {
     results.hidden = true;
     results.innerHTML = '';
     current = -1;
+    clearDocHighlights();
   }
 
   input.addEventListener('input', doSearch);
@@ -231,9 +309,15 @@ function setupSearch(main) {
   }
 
   results.addEventListener('click', e => {
-    if (e.target.closest('.search-result-item')) {
+    const item = e.target.closest('.search-result-item');
+    if (item) {
+      const q = input.value.trim().toLowerCase();
+      const href = item.getAttribute('href');
+      const id = href ? href.slice(1) : null;
       input.value = '';
       hide();
+      // Highlight after the browser has scrolled to the anchor.
+      if (id && q) setTimeout(() => highlightSection(id, q), 80);
     }
   });
 

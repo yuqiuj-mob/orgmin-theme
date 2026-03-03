@@ -244,6 +244,20 @@ body {
   padding: 0 1px;
 }
 
+/* In-document highlight when navigating to a search result */
+mark.doc-highlight {
+  background: rgba(250, 204, 21, 0.45);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+  animation: doc-highlight-fade 2.5s ease-out forwards;
+}
+
+@keyframes doc-highlight-fade {
+  0%   { background: rgba(250, 204, 21, 0.85); }
+  100% { background: rgba(250, 204, 21, 0.3); }
+}
+
 /* =============================================================================
    LAYOUT WRAPPER
    ============================================================================= */
