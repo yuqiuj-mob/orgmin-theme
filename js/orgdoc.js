@@ -477,7 +477,7 @@ function setupSearch(main) {
 
     const hits = index.filter(item =>
       searcher.match(item.title + '\n' + item.text)
-    ).slice(0, 12);
+    ).slice(0, 18);
 
     if (hits.length === 0) {
       results.innerHTML = `
@@ -500,14 +500,7 @@ function setupSearch(main) {
         `;
       }).join('');
 
-      results.innerHTML += `
-        <div class="search-hint">
-          <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
-          <span><kbd>↵</kbd> open</span>
-          <span><kbd>Esc</kbd> close</span>
-        </div>
-        ${syntaxHintHTML()}
-      `;
+      results.innerHTML += syntaxHintHTML();
     }
     results.hidden = false;
     current = -1;
