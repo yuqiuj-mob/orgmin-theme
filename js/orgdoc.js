@@ -3,6 +3,28 @@
    orgdoc.js
    ============================================================================= */
 
+const PALETTES = [
+  { id: 'ocean',  name: 'Ocean',  swatch: '#0a7bc3' },
+  { id: 'forest', name: 'Forest', swatch: '#109974' },
+  { id: 'sunset', name: 'Sunset', swatch: '#ea580c' },
+  { id: 'plum',   name: 'Plum',   swatch: '#7c3aed' },
+  { id: 'rose',   name: 'Rose',   swatch: '#db2777' },
+  { id: 'slate',  name: 'Slate',  swatch: '#475569' },
+];
+const DEFAULT_PALETTE = 'ocean';
+
+/* Apply stored palette as early as possible to avoid flash on load. */
+(function applyEarlyPalette() {
+  try {
+    const stored = localStorage.getItem('orgdoc-palette');
+    if (stored && PALETTES.some(p => p.id === stored)) {
+      document.documentElement.setAttribute('data-palette', stored);
+    } else {
+      document.documentElement.setAttribute('data-palette', DEFAULT_PALETTE);
+    }
+  } catch (_) { /* ignore */ }
+})();
+
 document.addEventListener('DOMContentLoaded', () => {
   const contentEl = document.getElementById('content');
   const postambleEl = document.getElementById('postamble');
@@ -24,9 +46,26 @@ document.addEventListener('DOMContentLoaded', () => {
     <a class="org-brand" href="#" title="${escapeHtml(docTitle)}">${escapeHtml(docTitle)}</a>
     <div class="org-search-wrapper">
       <i class="bi bi-search search-icon"></i>
-      <input type="search" id="org-search" placeholder="Search…" autocomplete="off" spellcheck="false">
+      <input type="search" id="org-search" placeholder="Search… (orderless · ?* glob · /regex/)"
+             autocomplete="off" spellcheck="false">
       <kbd class="search-kbd">Ctrl K</kbd>
+      <span class="search-mode" aria-hidden="true"></span>
       <div id="org-search-results" hidden></div>
+    </div>
+    <div class="palette-wrapper">
+      <button id="palette-toggle" class="palette-toggle" aria-label="Change accent palette" aria-haspopup="true" aria-expanded="false">
+        <i class="bi bi-palette"></i>
+      </button>
+      <div id="palette-popover" hidden role="menu">
+        <div class="palette-popover-title">Accent palette</div>
+        ${PALETTES.map(p => `
+          <button class="palette-option" role="menuitemradio" data-palette="${p.id}">
+            <span class="palette-swatch" style="--swatch: ${p.swatch}"></span>
+            <span class="palette-name">${p.name}</span>
+            <i class="bi bi-check2 palette-check"></i>
+          </button>
+        `).join('')}
+      </div>
     </div>
     <button id="theme-toggle" class="theme-toggle" aria-label="Toggle dark mode">
       <i class="bi bi-moon"></i>
@@ -93,6 +132,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ── 9. Wire up all features ───────────────────────────────────────────────
   setupDarkMode();
+  setupPaletteToggle();
   setupSidebarToggle(sidebar, overlay);
   setupSearch(main);
   setupTocHighlight(main, sidebar);
@@ -101,6 +141,56 @@ document.addEventListener('DOMContentLoaded', () => {
   setupMermaid(main);
   applyBootstrapClasses(main);
 });
+
+/* =============================================================================
+   PALETTE TOGGLE
+   ============================================================================= */
+function setupPaletteToggle() {
+  const btn      = document.getElementById('palette-toggle');
+  const popover  = document.getElementById('palette-popover');
+  if (!btn || !popover) return;
+
+  const options = popover.querySelectorAll('.palette-option');
+
+  function getCurrent() {
+    return document.documentElement.getAttribute('data-palette') || DEFAULT_PALETTE;
+  }
+
+  function applyPalette(id) {
+    if (!PALETTES.some(p => p.id === id)) return;
+    document.documentElement.setAttribute('data-palette', id);
+    try { localStorage.setItem('orgdoc-palette', id); } catch (_) { /* ignore */ }
+    options.forEach(opt => {
+      opt.classList.toggle('active', opt.dataset.palette === id);
+      opt.setAttribute('aria-checked', opt.dataset.palette === id ? 'true' : 'false');
+    });
+  }
+
+  function open()  { popover.hidden = false; btn.classList.add('open');  btn.setAttribute('aria-expanded', 'true');  }
+  function close() { popover.hidden = true;  btn.classList.remove('open'); btn.setAttribute('aria-expanded', 'false'); }
+
+  applyPalette(getCurrent());
+
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    popover.hidden ? open() : close();
+  });
+
+  options.forEach(opt => {
+    opt.addEventListener('click', () => {
+      applyPalette(opt.dataset.palette);
+      close();
+    });
+  });
+
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.palette-wrapper')) close();
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !popover.hidden) close();
+  });
+}
 
 /* =============================================================================
    DARK MODE
@@ -167,11 +257,13 @@ function setupSidebarToggle(sidebar, overlay) {
 }
 
 /* =============================================================================
-   SEARCH
+   SEARCH — orderless tokens, glob (* ?), and /regex/ syntax
    ============================================================================= */
 function setupSearch(main) {
-  const input   = document.getElementById('org-search');
-  const results = document.getElementById('org-search-results');
+  const input     = document.getElementById('org-search');
+  const results   = document.getElementById('org-search-results');
+  const wrapper   = document.querySelector('.org-search-wrapper');
+  const modeBadge = wrapper && wrapper.querySelector('.search-mode');
   if (!input || !results) return;
 
   const index = [];
@@ -203,6 +295,68 @@ function setupSearch(main) {
   let current = -1;
   let activeHighlights = [];
 
+  /* ── Query parsing ─────────────────────────────────────────────────────
+     Three modes:
+       /pattern/flags   — JS regex (case-insensitive by default).
+       tok1 tok2 ...    — orderless: every token must match anywhere.
+       py* ?ust         — within a token, * and ? are glob wildcards.
+  */
+  function buildSearcher(rawQuery) {
+    const q = rawQuery.trim();
+    if (!q) return { mode: 'empty', regexes: [], match: () => false, ok: true, label: '' };
+
+    const reMatch = q.match(/^\/(.*)\/([gimsu]*)$/);
+    if (reMatch) {
+      try {
+        const flags = reMatch[2].includes('i') ? reMatch[2] : reMatch[2] + 'i';
+        const re = new RegExp(reMatch[1] || '', flags);
+        return { mode: 'regex', regexes: [re], match: (txt) => re.test(txt), ok: true, label: 'RE' };
+      } catch (err) {
+        return {
+          mode: 'regex', regexes: [], match: () => false, ok: false,
+          label: 'RE!', error: String(err.message || err),
+        };
+      }
+    }
+
+    const tokens = q.split(/\s+/).filter(Boolean);
+    const regexes = [];
+    let hasGlob = false;
+    for (const t of tokens) {
+      if (/[*?]/.test(t)) {
+        hasGlob = true;
+        const pattern = t
+          .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+          .replace(/\*/g, '.*')
+          .replace(/\?/g, '.');
+        try { regexes.push(new RegExp(pattern, 'i')); } catch (_) { /* skip */ }
+      } else {
+        const escaped = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        regexes.push(new RegExp(escaped, 'i'));
+      }
+    }
+    return {
+      mode: hasGlob ? 'glob' : 'orderless',
+      regexes,
+      match: (txt) => regexes.length > 0 && regexes.every(re => re.test(txt)),
+      ok: true,
+      label: hasGlob ? '*?' : '',
+    };
+  }
+
+  function setMode(searcher) {
+    if (!modeBadge || !wrapper) return;
+    input.classList.toggle('search-error', !searcher.ok);
+    if (searcher.label) {
+      modeBadge.textContent = searcher.label;
+      modeBadge.classList.toggle('mode-error', !searcher.ok);
+      wrapper.classList.add('has-mode');
+    } else {
+      wrapper.classList.remove('has-mode');
+      modeBadge.classList.remove('mode-error');
+    }
+  }
+
   function clearDocHighlights() {
     activeHighlights.forEach(mark => {
       const parent = mark.parentNode;
@@ -214,12 +368,21 @@ function setupSearch(main) {
     activeHighlights = [];
   }
 
-  function highlightSection(headingId, query) {
+  function combinedRegex(regexes, flags = 'gi') {
+    if (!regexes.length) return null;
+    try {
+      const src = regexes.map(r => `(?:${r.source})`).join('|');
+      return new RegExp(src, flags);
+    } catch (_) { return null; }
+  }
+
+  function highlightSection(headingId, regexes) {
     clearDocHighlights();
     const heading = document.getElementById(headingId);
     if (!heading) return;
     const container = heading.parentElement;
-    const re = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    const re = combinedRegex(regexes);
+    if (!re) return;
 
     const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
     const toProcess = [];
@@ -246,6 +409,7 @@ function setupSearch(main) {
         frag.appendChild(mark);
         activeHighlights.push(mark);
         lastIdx = m.index + m[0].length;
+        if (m.index === re.lastIndex) re.lastIndex++; // guard zero-width
       }
       if (lastIdx < textNode.nodeValue.length) {
         frag.appendChild(document.createTextNode(textNode.nodeValue.slice(lastIdx)));
@@ -254,42 +418,84 @@ function setupSearch(main) {
     });
   }
 
-  function extractSnippet(text, query, maxLen = 160) {
-    const idx = text.toLowerCase().indexOf(query.toLowerCase());
-    if (idx === -1) return text.substring(0, maxLen);
-    const start = Math.max(0, idx - 55);
-    const end   = Math.min(text.length, idx + query.length + 100);
+  function extractSnippet(text, regexes, maxLen = 160) {
+    if (!text) return '';
+    let earliest = -1, hitLen = 0;
+    for (const re of regexes) {
+      const r = new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g');
+      const m = r.exec(text);
+      if (m && (earliest === -1 || m.index < earliest)) {
+        earliest = m.index;
+        hitLen = m[0].length;
+      }
+    }
+    if (earliest === -1) return text.substring(0, maxLen);
+    const start = Math.max(0, earliest - 55);
+    const end   = Math.min(text.length, earliest + hitLen + 100);
     let snippet = text.substring(start, end).replace(/\s+/g, ' ');
-    if (start > 0) snippet = '\u2026' + snippet;
-    if (end < text.length) snippet += '\u2026';
+    if (start > 0) snippet = '…' + snippet;
+    if (end < text.length) snippet += '…';
     return snippet.substring(0, maxLen + 4);
   }
 
+  function highlightHTML(html, regexes) {
+    const re = combinedRegex(regexes);
+    if (!re) return html;
+    return html.replace(re, m => `<mark>${m}</mark>`);
+  }
+
+  function syntaxHintHTML() {
+    return `
+      <div class="search-syntax-hint">
+        <span class="syntax-tag">Syntax</span>
+        <span><kbd>foo bar</kbd> orderless</span>
+        <span><kbd>py*</kbd> glob</span>
+        <span><kbd>/^def/</kbd> regex</span>
+      </div>
+    `;
+  }
+
   function doSearch() {
-    const q = input.value.trim().toLowerCase();
-    if (!q) { hide(); return; }
+    const raw = input.value;
+    const searcher = buildSearcher(raw);
+    setMode(searcher);
+
+    if (searcher.mode === 'empty') { hide(); return; }
+
+    if (!searcher.ok) {
+      results.innerHTML = `
+        <div class="search-no-results">
+          <i class="bi bi-exclamation-circle"></i>
+          Invalid regex: ${escapeHtml(searcher.error || '')}
+        </div>
+        ${syntaxHintHTML()}
+      `;
+      results.hidden = false;
+      current = -1;
+      return;
+    }
 
     const hits = index.filter(item =>
-      item.title.toLowerCase().includes(q) ||
-      item.text.toLowerCase().includes(q)
-    ).slice(0, 10);
+      searcher.match(item.title + '\n' + item.text)
+    ).slice(0, 12);
 
     if (hits.length === 0) {
       results.innerHTML = `
         <div class="search-no-results">
           <i class="bi bi-search"></i>
-          No results for &ldquo;${escapeHtml(q)}&rdquo;
+          No results for &ldquo;${escapeHtml(raw.trim())}&rdquo;
         </div>
+        ${syntaxHintHTML()}
       `;
     } else {
       const levelClass = lvl => `level-${lvl.toLowerCase()}`;
       results.innerHTML = hits.map((item, i) => {
-        const preview = extractSnippet(item.text, q);
+        const preview = extractSnippet(item.text, searcher.regexes);
         return `
           <a href="#${item.id}" class="search-result-item" data-idx="${i}">
             <span class="search-result-level ${levelClass(item.level)}">${item.level}</span>
-            <span class="search-result-title">${highlight(escapeHtml(item.title), q)}</span>
-            ${preview ? `<span class="search-result-preview">${highlight(escapeHtml(preview), q)}</span>` : ''}
+            <span class="search-result-title">${highlightHTML(escapeHtml(item.title), searcher.regexes)}</span>
+            ${preview ? `<span class="search-result-preview">${highlightHTML(escapeHtml(preview), searcher.regexes)}</span>` : ''}
           </a>
         `;
       }).join('');
@@ -300,6 +506,7 @@ function setupSearch(main) {
           <span><kbd>↵</kbd> open</span>
           <span><kbd>Esc</kbd> close</span>
         </div>
+        ${syntaxHintHTML()}
       `;
     }
     results.hidden = false;
@@ -320,7 +527,7 @@ function setupSearch(main) {
     if (e.key === 'ArrowDown')  { e.preventDefault(); moveTo(items, current + 1); }
     if (e.key === 'ArrowUp')    { e.preventDefault(); moveTo(items, current - 1); }
     if (e.key === 'Enter' && current >= 0) { items[current]?.click(); }
-    if (e.key === 'Escape')     { input.value = ''; hide(); input.blur(); }
+    if (e.key === 'Escape')     { input.value = ''; setMode(buildSearcher('')); hide(); input.blur(); }
   });
 
   document.addEventListener('keydown', e => {
@@ -342,12 +549,15 @@ function setupSearch(main) {
   results.addEventListener('click', e => {
     const item = e.target.closest('.search-result-item');
     if (item) {
-      const q = input.value.trim().toLowerCase();
+      const searcher = buildSearcher(input.value);
       const href = item.getAttribute('href');
       const id = href ? href.slice(1) : null;
       input.value = '';
+      setMode(buildSearcher(''));
       hide();
-      if (id && q) setTimeout(() => highlightSection(id, q), 80);
+      if (id && searcher.regexes.length) {
+        setTimeout(() => highlightSection(id, searcher.regexes), 80);
+      }
     }
   });
 
@@ -462,41 +672,53 @@ function setupMermaid(main) {
   const blocks = main.querySelectorAll('pre.src-mermaid');
   if (!blocks.length || typeof mermaid === 'undefined') return;
 
-  const LIGHT_VARS = {
-    primaryColor: '#e8f4fc',
-    primaryBorderColor: '#0a7bc3',
-    primaryTextColor: '#1e293b',
-    lineColor: '#64748b',
-    secondaryColor: '#f0f4f8',
-    tertiaryColor: '#f8fbfe',
-    background: '#ffffff',
-    mainBkg: '#e8f4fc',
-    nodeBorder: '#0a7bc3',
-    clusterBkg: '#f0f8ff',
-    clusterBorder: '#cbd5e1',
-    titleColor: '#1e293b',
-    edgeLabelBackground: '#ffffff',
-    fontFamily: "'DM Sans', system-ui, sans-serif",
-    fontSize: '14px',
-  };
+  /* Mermaid diagrams pick up the current accent palette via CSS variables. */
+  function readAccent() {
+    const cs = getComputedStyle(document.documentElement);
+    const rgb = cs.getPropertyValue('--accent-rgb').trim() || '10, 123, 195';
+    const hover = cs.getPropertyValue('--accent-hover').trim() || '#3a96d4';
+    return { rgb, hover, hex: `rgb(${rgb})` };
+  }
 
-  const DARK_VARS = {
-    primaryColor: '#1a2d3e',
-    primaryBorderColor: '#0a7bc3',
-    primaryTextColor: '#e2e8f0',
-    lineColor: '#94a3b8',
-    secondaryColor: '#1e293b',
-    tertiaryColor: '#2d3748',
-    background: '#1a1d27',
-    mainBkg: '#1a2d3e',
-    nodeBorder: '#0a7bc3',
-    clusterBkg: '#1e2533',
-    clusterBorder: '#2d3748',
-    titleColor: '#e2e8f0',
-    edgeLabelBackground: '#1a1d27',
-    fontFamily: "'DM Sans', system-ui, sans-serif",
-    fontSize: '14px',
-  };
+  function buildVars(isDark) {
+    const a = readAccent();
+    if (isDark) {
+      return {
+        primaryColor: '#1a2d3e',
+        primaryBorderColor: a.hex,
+        primaryTextColor: '#e2e8f0',
+        lineColor: '#94a3b8',
+        secondaryColor: '#1e293b',
+        tertiaryColor: '#2d3748',
+        background: '#1a1d27',
+        mainBkg: '#1a2d3e',
+        nodeBorder: a.hex,
+        clusterBkg: '#1e2533',
+        clusterBorder: '#2d3748',
+        titleColor: '#e2e8f0',
+        edgeLabelBackground: '#1a1d27',
+        fontFamily: "'DM Sans', system-ui, sans-serif",
+        fontSize: '14px',
+      };
+    }
+    return {
+      primaryColor: `rgba(${a.rgb}, 0.12)`,
+      primaryBorderColor: a.hex,
+      primaryTextColor: '#1e293b',
+      lineColor: '#64748b',
+      secondaryColor: '#f0f4f8',
+      tertiaryColor: '#f8fbfe',
+      background: '#ffffff',
+      mainBkg: `rgba(${a.rgb}, 0.10)`,
+      nodeBorder: a.hex,
+      clusterBkg: '#f0f8ff',
+      clusterBorder: '#cbd5e1',
+      titleColor: '#1e293b',
+      edgeLabelBackground: '#ffffff',
+      fontFamily: "'DM Sans', system-ui, sans-serif",
+      fontSize: '14px',
+    };
+  }
 
   // Replace pre blocks with wrapper divs, storing original code
   blocks.forEach(pre => {
@@ -511,7 +733,7 @@ function setupMermaid(main) {
     mermaid.initialize({
       startOnLoad: false,
       theme: 'base',
-      themeVariables: isDark ? DARK_VARS : LIGHT_VARS,
+      themeVariables: buildVars(isDark),
       flowchart: { curve: 'basis', padding: 16, useMaxWidth: true },
       sequence: { useMaxWidth: true, actorMargin: 60 },
       er: { useMaxWidth: true },
@@ -531,10 +753,16 @@ function setupMermaid(main) {
 
   renderAll();
 
-  // Re-render when dark mode toggles
+  // Re-render when dark mode or palette changes
   const themeToggle = document.getElementById('theme-toggle');
   if (themeToggle) {
     themeToggle.addEventListener('click', () => setTimeout(renderAll, 50));
+  }
+  const paletteToggle = document.getElementById('palette-popover');
+  if (paletteToggle) {
+    paletteToggle.addEventListener('click', e => {
+      if (e.target.closest('.palette-option')) setTimeout(renderAll, 50);
+    });
   }
 }
 
