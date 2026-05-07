@@ -46,7 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
     <a class="org-brand" href="#" title="${escapeHtml(docTitle)}">${escapeHtml(docTitle)}</a>
     <div class="org-search-wrapper">
       <i class="bi bi-search search-icon"></i>
-      <input type="search" id="org-search" placeholder="Search… (orderless · ?* glob · /regex/)"
+      <input type="search" id="org-search" placeholder="Search…"
              autocomplete="off" spellcheck="false">
       <kbd class="search-kbd">Ctrl K</kbd>
       <span class="search-mode" aria-hidden="true"></span>
@@ -519,7 +519,13 @@ function setupSearch(main) {
     const items = results.querySelectorAll('.search-result-item');
     if (e.key === 'ArrowDown')  { e.preventDefault(); moveTo(items, current + 1); }
     if (e.key === 'ArrowUp')    { e.preventDefault(); moveTo(items, current - 1); }
-    if (e.key === 'Enter' && current >= 0) { items[current]?.click(); }
+    /* Enter / Ctrl+M — open the highlighted item, or the first hit if none. */
+    if (e.key === 'Enter' || (e.ctrlKey && (e.key === 'm' || e.key === 'M'))) {
+      if (items.length) {
+        e.preventDefault();
+        (current >= 0 ? items[current] : items[0])?.click();
+      }
+    }
     if (e.key === 'Escape')     { input.value = ''; setMode(buildSearcher('')); hide(); input.blur(); }
   });
 
